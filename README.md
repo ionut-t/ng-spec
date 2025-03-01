@@ -7,9 +7,9 @@ A simple CLI tool for generating a minimal Angular component integration test bo
 ```bash
 # Using Go
 go install github.com/ionut-t/ng-spec@latest
-
-# Or download the binary from the Releases page
 ```
+
+Or install the binary from the [Releases page](https://github.com/ionut-t/ng-spec/releases)
 
 ## Features
 
