@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # Needed for uploading release assets
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+          
+      - name: Set release version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          
+          # Build for macOS (Apple Silicon)
+          GOOS=darwin GOARCH=arm64 go build -o dist/ng-spec-darwin-arm64
+
+          # Build for macOS (Intel)
+          GOOS=darwin GOARCH=amd64 go build -o dist/ng-spec-darwin-amd64
+                    
+          # Build for Linux (64-bit)
+          GOOS=linux GOARCH=amd64 go build -o dist/ng-spec-linux-amd64
+          
+          # Build for Windows (64-bit)
+          GOOS=windows GOARCH=amd64 go build -o dist/ng-spec-windows-amd64.exe
+          
+          # Make binaries executable
+          chmod +x dist/*
+          
+          # Create checksums
+          cd dist
+          sha256sum * > checksums.txt
+          cd ..
+      
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
+          files: |
+            dist/*
+          body: |
+            # ng-spec ${{ env.VERSION }}
+            
+            ## What's New
+            
+            <!-- Add release notes here -->
+            
+            ## Installation
+
+            ### macOS (Apple Silicon)
+            ```bash
+            curl -L https://github.com/ionut-t/ng-spec/releases/download/${{ env.VERSION }}/ng-spec-darwin-arm64 -o ng-spec && chmod +x ng-spec
+            ```
+            
+            ### macOS (Intel)
+            ```bash
+            curl -L https://github.com/ionut-t/ng-spec/releases/download/${{ env.VERSION }}/ng-spec-darwin-amd64 -o ng-spec && chmod +x ng-spec
+            ```
+            
+            ### Linux
+            ```bash
+            curl -L https://github.com/ionut-t/ng-spec/releases/download/${{ env.VERSION }}/ng-spec-linux-amd64 -o ng-spec && chmod +x ng-spec
+            ```
+
+            ### For macOS and Linux
+            ```bash
+             sudo mv ng-spec /usr/local/bin/
+            # or
+            mkdir -p ~/bin && mv ng-spec ~/bin/ && echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+            source ~/.zshrc
+            ```
+            
+            ### Windows
+            Download the binary from the assets below.
