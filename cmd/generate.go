@@ -5,18 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
-type userInput interface {
+type userConfirmationInput interface {
 	getConfirmation(prompt string) (bool, error)
 }
 
-type realUserInput struct{}
+type userInput struct{}
 
-func (ui realUserInput) getConfirmation(prompt string) (bool, error) {
+func (ui userInput) getConfirmation(prompt string) (bool, error) {
 	fmt.Print(prompt)
 	var response string
 	_, err := fmt.Scanln(&response)
@@ -33,29 +34,27 @@ func (ui realUserInput) getConfirmation(prompt string) (bool, error) {
 }
 
 func generateComponentTest(path string) {
-	println("generateComponentTest", path)
-
 	currentWorkingDirectory, err := os.Getwd()
 	if err != nil {
 		printError(err)
 		return
 	}
 
-	componentName := extractComponentName(path)
+	componentPath := transformBasePath(path)
 
 	if strings.HasPrefix(path, "/") {
 		baseName := filepath.Base(path)
 
-		if !strings.Contains(baseName, ".") && componentName == "" {
-			componentName = baseName
+		if !strings.Contains(baseName, ".") && componentPath == "" {
+			componentPath = baseName
 		}
 	}
 
-	if componentName == "" {
-		componentName = filepath.Base(currentWorkingDirectory)
+	if componentPath == "" {
+		componentPath = filepath.Base(currentWorkingDirectory)
 	}
 
-	filePath, err := createFilePath(path, componentName, currentWorkingDirectory)
+	filePath, err := createFilePath(path, componentPath, currentWorkingDirectory)
 	if err != nil {
 		printError(err)
 		return
@@ -67,9 +66,9 @@ func generateComponentTest(path string) {
 		return
 	}
 
-	input := realUserInput{}
+	input := userInput{}
 
-	if err := writeTestFile(filePath, componentName, input); err != nil {
+	if err := writeTestFile(filePath, componentPath, input); err != nil {
 		if err.Error() == "operation cancelled" {
 			fmt.Println("\033[33m Operation cancelled \033[0m")
 		} else {
@@ -82,24 +81,38 @@ func generateComponentTest(path string) {
 	fmt.Println("\033[32m Test file generated successfully at", filePath, "\033[0m")
 }
 
-func extractComponentName(path string) string {
-	componentName := strings.Split(filepath.Base(path), ".")[0]
-	return strings.TrimSuffix(componentName, "Component")
+func transformBasePath(path string) string {
+	if len(path) == 0 {
+		return ""
+	}
+
+	path = strings.TrimSuffix(path, "Component")
+
+	var result strings.Builder
+	result.WriteRune(unicode.ToLower(rune(path[0])))
+
+	for i := 1; i < len(path); i++ {
+		if unicode.IsUpper(rune(path[i])) {
+			result.WriteRune('-')
+			result.WriteRune(unicode.ToLower(rune(path[i])))
+		} else {
+			result.WriteRune(rune(path[i]))
+		}
+	}
+
+	basePath := result.String()
+	basePath = strings.Split(filepath.Base(basePath), ".")[0]
+
+	return basePath
 }
 
 func createFilePath(basePath, componentName, currentWorkingDirectory string) (string, error) {
 	fileName := componentName + ".component.spec.ts"
 
-	println("basePath", basePath)
-
 	if basePath == "" {
 		return filepath.Join(currentWorkingDirectory, fileName), nil
 	}
 
-	println(filepath.IsAbs(basePath))
-
-	// If path is absolute, join with current working directory
-	// so it can be used as: ng-spec /path/to/component
 	if filepath.IsAbs(basePath) {
 		return filepath.Join(currentWorkingDirectory, basePath, fileName), nil
 	}
@@ -107,9 +120,7 @@ func createFilePath(basePath, componentName, currentWorkingDirectory string) (st
 	return filepath.Join(currentWorkingDirectory, fileName), nil
 }
 
-func writeTestFile(filePath, componentName string, input userInput) error {
-	println(filePath)
-
+func writeTestFile(filePath, componentPath string, input userConfirmationInput) error {
 	if _, err := os.Stat(filePath); err == nil {
 		prompt := fmt.Sprintf("\033[33mWarning: %s already exists. Overwrite? (y/N): \033[0m", filePath)
 		confirmed, err := input.getConfirmation(prompt)
@@ -128,7 +139,7 @@ func writeTestFile(filePath, componentName string, input userInput) error {
 
 	defer newFile.Close()
 
-	_, err = newFile.WriteString(createTemplate(componentName))
+	_, err = newFile.WriteString(createTemplate(componentPath))
 	return err
 }
 
@@ -136,10 +147,11 @@ func printError(err error) {
 	fmt.Printf("\033[31m Error generating test file: %v \033[0m\n", err)
 }
 
-func createTemplate(componentName string) string {
+func createTemplate(componentPath string) string {
+	importName := strings.ToLower(componentPath)
 	caser := cases.Title(language.English)
-	componentName = caser.String(componentName)
-	importName := strings.ToLower(componentName)
+	componentName := caser.String(componentPath)
+	componentName = strings.ReplaceAll(componentName, "-", "")
 
 	template := fmt.Sprintf(`
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';

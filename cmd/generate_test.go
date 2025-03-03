@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestExtractComponentName(t *testing.T) {
+func TestTransformBasePath(t *testing.T) {
 	tests := []struct {
 		name     string
 		path     string
@@ -20,15 +20,16 @@ func TestExtractComponentName(t *testing.T) {
 		{"Simple component", "user", "user"},
 		{"Component with extension", "user.component.ts", "user"},
 		{"Component with Component suffix", "userComponent", "user"},
+		{"Component with name", "UserProfile", "user-profile"},
 		{"Path with directory", "/path/to/user", "user"},
 		{"Path with directory and extension", "/path/to/user.component.ts", "user"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractComponentName(tt.path)
+			result := transformBasePath(tt.path)
 			if result != tt.expected {
-				t.Errorf("extractComponentName(%q) = %q, want %q", tt.path, result, tt.expected)
+				t.Errorf("transformBasePath(%q) = %q, want %q,", tt.path, result, tt.expected)
 			}
 		})
 	}
