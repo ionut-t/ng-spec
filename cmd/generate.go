@@ -7,12 +7,14 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/huh"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
 type userConfirmationInput interface {
 	getConfirmation(prompt string) (bool, error)
+	addACs(prompt string) (string, string, error)
 }
 
 type userInput struct{}
@@ -31,6 +33,23 @@ func (ui userInput) getConfirmation(prompt string) (bool, error) {
 	}
 
 	return response == "y" || response == "Y", nil
+}
+
+func (ui userInput) addACs(prompt string) (string, string, error) {
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Key("acsLink").Placeholder("ACs Link"),
+			huh.NewText().Key("acsDescription").Placeholder("Add ACs here").WithHeight(10),
+		),
+	)
+
+	err := form.Run()
+
+	if err != nil {
+		return "", "", err
+	}
+
+	return form.GetString("acsLink"), form.GetString("acsDescription"), nil
 }
 
 func generateComponentTest(path string) {
@@ -68,9 +87,35 @@ func generateComponentTest(path string) {
 
 	input := userInput{}
 
-	if err := writeTestFile(filePath, componentPath, input); err != nil {
+	template := createTemplate(componentPath)
+
+	useAcs, err := input.getConfirmation("\033[36m Would you like to generate the boilerplate based on ACs? (y/N): \033[0m")
+	if err != nil {
+		printError(err)
+		return
+	}
+
+	if useAcs {
+		acsLink, acsText, err := input.addACs("\033[36m Please enter your Acceptance Criteria:\033[0m")
+		if err != nil {
+			if err.Error() == "user aborted" {
+				return
+			}
+
+			printError(err)
+			return
+		}
+
+		if strings.TrimSpace(acsText) != "" {
+			acsBlocks := parseAcs(acsText)
+			template = integrateAcsWithTemplate(template, acsLink, acsBlocks)
+		}
+	}
+
+	err = writeTestFile(filePath, template, input)
+	if err != nil {
 		if err.Error() == "operation cancelled" {
-			fmt.Println("\033[33m Operation cancelled \033[0m")
+			return
 		} else {
 			printError(err)
 		}
@@ -120,9 +165,9 @@ func createFilePath(basePath, componentName, currentWorkingDirectory string) (st
 	return filepath.Join(currentWorkingDirectory, fileName), nil
 }
 
-func writeTestFile(filePath, componentPath string, input userConfirmationInput) error {
+func writeTestFile(filePath, content string, input userConfirmationInput) error {
 	if _, err := os.Stat(filePath); err == nil {
-		prompt := fmt.Sprintf("\033[33mWarning: %s already exists. Overwrite? (y/N): \033[0m", filePath)
+		prompt := fmt.Sprintf("\033[33m Warning: %s already exists. Overwrite? (y/N): \033[0m", filePath)
 		confirmed, err := input.getConfirmation(prompt)
 		if err != nil {
 			return err
@@ -139,7 +184,7 @@ func writeTestFile(filePath, componentPath string, input userConfirmationInput) 
 
 	defer newFile.Close()
 
-	_, err = newFile.WriteString(createTemplate(componentPath))
+	_, err = newFile.WriteString(content)
 	return err
 }
 

@@ -14,12 +14,15 @@ Or install the binary from the [Releases page](https://github.com/ionut-t/ng-spe
 ## Features
 
 - Quickly generate boilerplate test files for Angular components
+- Interactive AC (Acceptance Criteria) parsing to auto-generate test blocks
 - Uses Angular Testing Library for modern, user-centric testing
 - Configures common testing providers (HTTP, Store)
 - Works with both relative and absolute component paths
 - Runs with no arguments to generate a test for the current directory
 
 ## Usage
+
+### Basic Usage
 
 ```bash
 # Run with no arguments to generate a test based on the current directory name
@@ -36,6 +39,29 @@ ng-spec /dashboard
 # This will create dashboard.component.spec.ts in the dashboard directory (under your current working directory)
 ```
 
+### Using Acceptance Criteria
+
+When running any of the commands above, you'll be prompted if you want to generate test blocks based on ACs:
+
+```
+Would you like to generate the boilerplate based on ACs? (y/N):
+```
+
+If you select "y", you'll be prompted to enter:
+
+1. ACs link (e.g., JIRA ticket number)
+2. ACs content in a structured format
+
+#### AC Format Example
+
+```
+1. Feature/Category (creates a describe block)
+  a. Test Case (creates an it block)
+  b. Nested Feature (creates a nested describe block)
+    i. Nested Test Case (creates an it block inside nested describe)
+    ii. Another Nested Test Case
+```
+
 ## Generated Test Structure
 
 Each generated test includes:
@@ -45,8 +71,9 @@ Each generated test includes:
 - NgRx store mock setup
 - TestbedHarnessEnvironment for component testing
 - A basic "should create" test
+- Generated test blocks based on your ACs (if provided)
 
-Example:
+### Example with ACs:
 
 ```typescript
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
@@ -77,6 +104,28 @@ describe('DashboardComponent', () => {
   it('should create', async () => {
     const { view } = await mount();
     expect(view.fixture.componentInstance).toBeTruthy();
+  });
+
+  describe('User Management', () => {
+    it('should create user', async () => {
+      // TODO: Implement test
+    });
+
+    it('should delete user', async () => {
+      // TODO: Implement test
+    });
+  });
+
+  describe('Dashboard Features', () => {
+    describe('Data Visualization', () => {
+      it('should display charts', async () => {
+        // TODO: Implement test
+      });
+
+      it('should refresh data', async () => {
+        // TODO: Implement test
+      });
+    });
   });
 });
 ```

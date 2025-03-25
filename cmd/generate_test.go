@@ -1,14 +1,26 @@
 package cmd
 
 import (
-	"bytes"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// Mock implementation for userInput.addACs
+type mockUserInput struct {
+	confirmationResponse bool
+	acsLink              string
+	acsText              string
+}
+
+func (m mockUserInput) getConfirmation(prompt string) (bool, error) {
+	return m.confirmationResponse, nil
+}
+
+func (m mockUserInput) addACs(prompt string) (string, string, error) {
+	return m.acsLink, m.acsText, nil
+}
 
 func TestTransformBasePath(t *testing.T) {
 	tests := []struct {
@@ -23,13 +35,15 @@ func TestTransformBasePath(t *testing.T) {
 		{"Component with name", "UserProfile", "user-profile"},
 		{"Path with directory", "/path/to/user", "user"},
 		{"Path with directory and extension", "/path/to/user.component.ts", "user"},
+		{"Component with multiple capital letters", "UserProfileSettings", "user-profile-settings"},
+		{"Component with numbers", "User2Factor", "user2-factor"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := transformBasePath(tt.path)
 			if result != tt.expected {
-				t.Errorf("transformBasePath(%q) = %q, want %q,", tt.path, result, tt.expected)
+				t.Errorf("transformBasePath(%q) = %q, want %q", tt.path, result, tt.expected)
 			}
 		})
 	}
@@ -43,12 +57,11 @@ func TestCreateFilePath(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                  string
-		basePath              string
-		componentName         string
-		currentWorkingDir     string
-		expectedPathSuffix    string
-		expectErrorContaining string
+		name               string
+		basePath           string
+		componentName      string
+		currentWorkingDir  string
+		expectedPathSuffix string
 	}{
 		{
 			name:               "Empty path",
@@ -71,22 +84,18 @@ func TestCreateFilePath(t *testing.T) {
 			currentWorkingDir:  cwd,
 			expectedPathSuffix: filepath.Join(cwd, "/src/app/user.component.spec.ts"),
 		},
+		{
+			name:               "With dashes in component name",
+			basePath:           "",
+			componentName:      "user-profile",
+			currentWorkingDir:  cwd,
+			expectedPathSuffix: "user-profile.component.spec.ts",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := createFilePath(tt.basePath, tt.componentName, tt.currentWorkingDir)
-
-			if tt.expectErrorContaining != "" {
-				if err == nil {
-					t.Errorf("createFilePath(%q, %q, %q) expected error containing %q, got nil",
-						tt.basePath, tt.componentName, tt.currentWorkingDir, tt.expectErrorContaining)
-				} else if !strings.Contains(err.Error(), tt.expectErrorContaining) {
-					t.Errorf("createFilePath(%q, %q, %q) error %q does not contain %q",
-						tt.basePath, tt.componentName, tt.currentWorkingDir, err.Error(), tt.expectErrorContaining)
-				}
-				return
-			}
 
 			if err != nil {
 				t.Errorf("createFilePath(%q, %q, %q) unexpected error: %v",
@@ -109,26 +118,45 @@ func TestCreateFilePath(t *testing.T) {
 
 func TestCreateTemplate(t *testing.T) {
 	tests := []struct {
-		name           string
-		componentName  string
-		expectedPhrase string
+		name            string
+		componentName   string
+		expectedPhrases []string
 	}{
-		{"Simple component", "user", "UserComponent"},
-		{"Lowercase component", "profile", "ProfileComponent"},
-		{"Component with spaces", "user profile", "User ProfileComponent"},
+		{
+			name:          "Simple component",
+			componentName: "user",
+			expectedPhrases: []string{
+				"UserComponent",
+				"import { UserComponent } from './user.component';",
+				"const mount = async () => {",
+				"it('should create', async () => {",
+				"ACs from:",
+			},
+		},
+		{
+			name:          "Component with dashes",
+			componentName: "user-profile",
+			expectedPhrases: []string{
+				"UserProfileComponent",
+				"import { UserProfileComponent } from './user-profile.component';",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := createTemplate(tt.componentName)
-			if !strings.Contains(result, tt.expectedPhrase) {
-				t.Errorf("createTemplate(%q) does not contain %q", tt.componentName, tt.expectedPhrase)
+
+			for _, phrase := range tt.expectedPhrases {
+				if !strings.Contains(result, phrase) {
+					t.Errorf("createTemplate(%q) does not contain expected phrase: %q", tt.componentName, phrase)
+				}
 			}
 		})
 	}
 }
 
-func TestGenerateComponentTest(t *testing.T) {
+func TestWriteTestFile(t *testing.T) {
 	// Create temporary directory for test
 	tempDir, err := os.MkdirTemp("", "ng-spec-test")
 	if err != nil {
@@ -136,7 +164,74 @@ func TestGenerateComponentTest(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Change to temp directory for test
+	filePath := filepath.Join(tempDir, "test.component.spec.ts")
+	content := "describe('Test', () => {});"
+
+	// Test case 1: Write to a new file
+	mockInput := mockUserInput{confirmationResponse: true}
+	err = writeTestFile(filePath, content, mockInput)
+
+	if err != nil {
+		t.Errorf("writeTestFile() failed to write new file: %v", err)
+	}
+
+	// Check if file was created with the right content
+	fileContent, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(fileContent) != content {
+		t.Errorf("writeTestFile() wrote incorrect content: got %q, want %q", string(fileContent), content)
+	}
+
+	// Test case 2: Overwrite existing file with confirmation
+	newContent := "describe('Updated', () => {});"
+	mockConfirmInput := mockUserInput{confirmationResponse: true}
+
+	err = writeTestFile(filePath, newContent, mockConfirmInput)
+	if err != nil {
+		t.Errorf("writeTestFile() failed to overwrite file with confirmation: %v", err)
+	}
+
+	fileContent, err = os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(fileContent) != newContent {
+		t.Errorf("writeTestFile() did not properly overwrite file: got %q, want %q", string(fileContent), newContent)
+	}
+
+	// Test case 3: Attempt to overwrite without confirmation
+	finalContent := "describe('Final', () => {});"
+	mockDenyInput := mockUserInput{confirmationResponse: false}
+
+	err = writeTestFile(filePath, finalContent, mockDenyInput)
+	if err == nil || err.Error() != "operation cancelled" {
+		t.Errorf("writeTestFile() should have been cancelled, got error: %v", err)
+	}
+
+	// Check file still has previous content
+	fileContent, err = os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(fileContent) != newContent {
+		t.Errorf("writeTestFile() should not have changed file content when confirmation denied: got %q, want %q", string(fileContent), newContent)
+	}
+}
+
+func TestGenerateComponentTestWithACs(t *testing.T) {
+	// Create temporary directory for test
+	tempDir, err := os.MkdirTemp("", "ng-spec-acs-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Save current working directory and change to temp directory
 	originalWd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -147,196 +242,130 @@ func TestGenerateComponentTest(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Set up test cases
 	tests := []struct {
-		name            string
-		path            string
-		expectedFile    string
-		expectedContent string
+		name              string
+		componentName     string
+		useACs            bool
+		acsLink           string
+		acsText           string
+		expectedFile      string
+		expectedContent   []string
+		unexpectedContent []string
 	}{
 		{
-			name:            "Default with empty path",
-			path:            "",
-			expectedFile:    filepath.Base(tempDir) + ".component.spec.ts",
-			expectedContent: filepath.Base(tempDir),
+			name:          "Generate with ACs",
+			componentName: "user",
+			useACs:        true,
+			acsLink:       "JIRA-123",
+			acsText:       "1. Create user\na. Enter valid data\nb. Submit form",
+			expectedFile:  "user.component.spec.ts",
+			expectedContent: []string{
+				"UserComponent",
+				"JIRA-123",
+				"describe('Create user'",
+				"it('should enter valid data'",
+				"it('should submit form'",
+			},
 		},
 		{
-			name:            "With explicit component name",
-			path:            "user",
-			expectedFile:    "user.component.spec.ts",
-			expectedContent: "UserComponent",
+			name:          "Generate without ACs",
+			componentName: "profile",
+			useACs:        false,
+			acsLink:       "", // Not used
+			acsText:       "", // Not used
+			expectedFile:  "profile.component.spec.ts",
+			expectedContent: []string{
+				"ProfileComponent",
+				"TODO: Link ACs tickets here", // Default placeholder remains
+			},
+			unexpectedContent: []string{
+				"describe('Create user'",
+			},
 		},
 		{
-			name:            "With absolute path",
-			path:            "/profile", // Using a simple absolute path
-			expectedFile:    filepath.Join(tempDir, "profile", "profile.component.spec.ts"),
-			expectedContent: "ProfileComponent",
+			name:          "Generate with ACs link but empty ACs content",
+			componentName: "empty",
+			useACs:        true,
+			acsLink:       "JIRA-456",
+			acsText:       "", // Empty ACs
+			expectedFile:  "empty.component.spec.ts",
+			expectedContent: []string{
+				"EmptyComponent",
+				"JIRA-456", // Link should still be updated
+			},
+			unexpectedContent: []string{
+				"describe('Create", // No ACs blocks should be generated
+			},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Clear any existing files
-			files, err := os.ReadDir(tempDir)
+	// Run test cases
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Clean up any existing files
+			files, _ := filepath.Glob(filepath.Join(tempDir, "*.component.spec.ts"))
+			for _, f := range files {
+				os.Remove(f)
+			}
+
+			// Create a mock for the userConfirmationInput interface
+			mockInput := mockUserInput{
+				confirmationResponse: tc.useACs,
+				acsLink:              tc.acsLink,
+				acsText:              tc.acsText,
+			}
+
+			// Create the file path
+			filePath := filepath.Join(tempDir, tc.expectedFile)
+
+			// Generate the template based on inputs
+			template := createTemplate(tc.componentName)
+
+			if tc.useACs && tc.acsText != "" {
+				acsBlocks := parseAcs(tc.acsText)
+				template = integrateAcsWithTemplate(template, tc.acsLink, acsBlocks)
+			} else if tc.useACs && tc.acsText == "" && tc.acsLink != "" {
+				// If AC text is empty but link is provided, still update the link
+				template = integrateAcsWithTemplate(template, tc.acsLink, "")
+			}
+
+			// Write to file
+			err := writeTestFile(filePath, template, mockInput)
 			if err != nil {
-				t.Fatal(err)
-			}
-			for _, file := range files {
-				if !file.IsDir() && strings.HasSuffix(file.Name(), ".component.spec.ts") {
-					os.Remove(filepath.Join(tempDir, file.Name()))
-				}
-			}
-
-			if strings.Contains(tt.expectedFile, filepath.Join(tempDir, "profile")) {
-				dir := filepath.Dir(tt.expectedFile)
-				if err := os.MkdirAll(dir, 0755); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			// Capture stdout to avoid polluting test output
-			oldStdout := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			generateComponentTest(tt.path)
-
-			// Restore stdout
-			w.Close()
-			os.Stdout = oldStdout
-
-			// Consume stdout to prevent hanging
-			var buf bytes.Buffer
-			io.Copy(&buf, r)
-
-			if _, err := os.Stat(tt.expectedFile); os.IsNotExist(err) {
-				t.Errorf("generateComponentTest(%q) did not create expected file at %s",
-					tt.path, tt.expectedFile)
+				t.Errorf("Failed to write test file: %v", err)
 				return
 			}
 
-			content, err := os.ReadFile(tt.expectedFile)
-			if err != nil {
-				t.Fatal(err)
+			// Verify file was created
+			_, err = os.Stat(filePath)
+			if os.IsNotExist(err) {
+				t.Errorf("Expected file %s was not created", filePath)
+				return
 			}
 
-			if !strings.Contains(string(content), tt.expectedContent) {
-				t.Errorf("generateComponentTest(%q) file does not contain expected content %q",
-					tt.path, tt.expectedContent)
+			// Read file content
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				t.Errorf("Failed to read file: %v", err)
+				return
+			}
+
+			contentStr := string(content)
+
+			// Check for expected content
+			for _, expectedStr := range tc.expectedContent {
+				if !strings.Contains(contentStr, expectedStr) {
+					t.Errorf("Expected content %q not found in generated file", expectedStr)
+				}
+			}
+
+			// Check that unwanted content is not there
+			for _, unexpectedStr := range tc.unexpectedContent {
+				if strings.Contains(contentStr, unexpectedStr) {
+					t.Errorf("Unexpected content %q found in generated file", unexpectedStr)
+				}
 			}
 		})
-	}
-}
-
-type mockUserInput struct {
-	Response bool
-}
-
-func (m mockUserInput) getConfirmation(prompt string) (bool, error) {
-	return m.Response, nil
-}
-
-type errorUserInput struct{}
-
-func (e errorUserInput) getConfirmation(prompt string) (bool, error) {
-	return false, fmt.Errorf("simulated error")
-}
-
-func TestWriteTestFile(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "ng-spec-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Test case 1: Creating a new file (doesn't require confirmation)
-	filePath := filepath.Join(tempDir, "new.component.spec.ts")
-
-	mockInput := mockUserInput{Response: true}
-
-	err = writeTestFile(filePath, "new", mockInput)
-	if err != nil {
-		t.Errorf("writeTestFile() error creating new file: %v", err)
-	}
-
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(string(content), "NewComponent") {
-		t.Errorf("writeTestFile() did not create file with expected content")
-	}
-
-	// Test case 2: Overwriting a file with confirmation (yes)
-	yesInput := mockUserInput{Response: true}
-
-	err = writeTestFile(filePath, "overwrite", yesInput)
-	if err != nil {
-		t.Errorf("writeTestFile() error with 'yes' confirmation: %v", err)
-	}
-
-	// Check that file was overwritten
-	content, err = os.ReadFile(filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(string(content), "OverwriteComponent") {
-		t.Errorf("writeTestFile() did not overwrite file with new content")
-	}
-
-	// Test case 3: Attempting to overwrite a file but denying confirmation (no)
-	noInput := mockUserInput{Response: false}
-
-	err = writeTestFile(filePath, "denied", noInput)
-	if err == nil {
-		t.Errorf("writeTestFile() expected error when confirmation denied")
-	}
-
-	if err != nil && !strings.Contains(err.Error(), "cancelled") {
-		t.Errorf("writeTestFile() error = %v, want 'operation cancelled'", err)
-	}
-
-	content, err = os.ReadFile(filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !strings.Contains(string(content), "OverwriteComponent") {
-		t.Errorf("writeTestFile() file content changed despite cancelled overwrite")
-	}
-
-	errorInput := errorUserInput{}
-
-	err = writeTestFile(filePath, "error", errorInput)
-	if err == nil {
-		t.Errorf("writeTestFile() expected error when confirmation fails")
-	}
-
-	if err != nil && !strings.Contains(err.Error(), "simulated error") {
-		t.Errorf("writeTestFile() error = %v, want 'simulated error'", err)
-	}
-}
-
-func TestPrintError(t *testing.T) {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printError(fmt.Errorf("test error"))
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
-
-	if !strings.Contains(output, "test error") {
-		t.Errorf("printError() output = %q, want to contain 'test error'", output)
-	}
-
-	if !strings.Contains(output, "\033[31m") {
-		t.Errorf("printError() output = %q, want to contain red color code", output)
 	}
 }

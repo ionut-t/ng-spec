@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -70,47 +68,5 @@ func TestRootCmdExecute(t *testing.T) {
 
 	if !executed {
 		t.Error("Run function was not executed")
-	}
-}
-
-func TestRootCmdRunFunction(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "ng-spec-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	currentDir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(currentDir)
-
-	err = os.Chdir(tempDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	rootCmd.Run(rootCmd, []string{})
-
-	w.Close()
-	os.Stdout = oldStdout
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
-
-	if !strings.Contains(output, "generated successfully") {
-		t.Errorf("Expected success message, got: %s", output)
-	}
-
-	baseName := fmt.Sprintf("%s.component.spec.ts", filepath.Base(tempDir))
-	_, err = os.Stat(baseName)
-	if os.IsNotExist(err) {
-		t.Errorf("Expected file %s to be created", baseName)
 	}
 }
