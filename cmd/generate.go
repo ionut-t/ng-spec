@@ -14,7 +14,7 @@ import (
 
 type userConfirmationInput interface {
 	getConfirmation(prompt string) (bool, error)
-	addACs(prompt string) (string, string, error)
+	addACs() (string, string, error)
 }
 
 type userInput struct{}
@@ -35,7 +35,7 @@ func (ui userInput) getConfirmation(prompt string) (bool, error) {
 	return response == "y" || response == "Y", nil
 }
 
-func (ui userInput) addACs(prompt string) (string, string, error) {
+func (ui userInput) addACs() (string, string, error) {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().Key("acsLink").Placeholder("ACs Link"),
@@ -89,14 +89,14 @@ func generateComponentTest(path string) {
 
 	template := createTemplate(componentPath)
 
-	useAcs, err := input.getConfirmation("\033[36m Would you like to generate the boilerplate based on ACs? (y/N): \033[0m")
+	useAcs, err := input.getConfirmation("\033[36m Generate the boilerplate based on ACs? (y/N): \033[0m")
 	if err != nil {
 		printError(err)
 		return
 	}
 
 	if useAcs {
-		acsLink, acsText, err := input.addACs("\033[36m Please enter your Acceptance Criteria:\033[0m")
+		acsLink, acsText, err := input.addACs()
 		if err != nil {
 			if err.Error() == "user aborted" {
 				return

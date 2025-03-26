@@ -7,6 +7,7 @@ import (
 	"unicode"
 )
 
+// parseAcs processes the acceptance criteria text and generates test blocks
 func parseAcs(acsText string) string {
 	lines := strings.Split(acsText, "\n")
 	var result strings.Builder
@@ -42,19 +43,27 @@ func parseAcs(acsText string) string {
 			indentLevel = 1
 
 		} else if matches := level2Regex.FindStringSubmatch(trimmedLine); len(matches) > 0 {
-			// Close previous level 2 block if any
-			if currentLevel2 != "" {
-				result.WriteString(getIndentation(1) + "});\n\n")
-			}
-
 			title := sanitizeTitle(matches[2])
 
-			// Check if this is a test case or a nested describe
 			if strings.Contains(title, "describe") {
-				title = strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(title, "describe")), ")")
-				title = strings.Trim(title, "()\"' ")
-				result.WriteString(fmt.Sprintf("%sdescribe('%s', () => {\n", getIndentation(indentLevel), title))
-				currentLevel2 = title
+				if currentLevel2 != "" {
+					result.WriteString(getIndentation(1) + "});\n\n")
+				}
+
+				describeRegex := regexp.MustCompile(`\(describe\s*\(\s*["']([^"']*)["']\s*\)\)`)
+				describeMatches := describeRegex.FindStringSubmatch(title)
+
+				var describeTitle string
+				if len(describeMatches) >= 2 {
+					describeTitle = describeMatches[1]
+				} else {
+					// If no match, use the text before "describe"
+					parts := strings.Split(title, "(describe")
+					describeTitle = strings.TrimSpace(parts[0])
+				}
+
+				result.WriteString(fmt.Sprintf("%sdescribe('%s', () => {\n", getIndentation(indentLevel), describeTitle))
+				currentLevel2 = describeTitle
 				indentLevel = 2
 			} else {
 				result.WriteString(fmt.Sprintf("%sit('should %s', async () => {\n",
@@ -76,9 +85,8 @@ func parseAcs(acsText string) string {
 
 	// Close any open blocks
 	if currentLevel2 != "" {
-		result.WriteString(getIndentation(1) + "});\n")
+		result.WriteString(getIndentation(1) + "});\n\n")
 	}
-
 	if currentLevel1 != "" {
 		result.WriteString("});\n")
 	}
@@ -91,7 +99,7 @@ func getIndentation(level int) string {
 }
 
 func sanitizeTitle(title string) string {
-	if strings.Contains(strings.ToLower(title), "describe (") {
+	if strings.Contains(strings.ToLower(title), "describe") {
 		return title
 	}
 

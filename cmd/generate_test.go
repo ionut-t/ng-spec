@@ -18,7 +18,7 @@ func (m mockUserInput) getConfirmation(prompt string) (bool, error) {
 	return m.confirmationResponse, nil
 }
 
-func (m mockUserInput) addACs(prompt string) (string, string, error) {
+func (m mockUserInput) addACs() (string, string, error) {
 	return m.acsLink, m.acsText, nil
 }
 
