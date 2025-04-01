@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -36,12 +38,49 @@ func (ui userInput) getConfirmation(prompt string) (bool, error) {
 }
 
 func (ui userInput) addACs() (string, string, error) {
+	acsLinkInput := huh.NewInput().Key("acsLink").Placeholder("ACs Link")
+	acsDescriptionInput := huh.NewText().Key("acsDescription").Placeholder("Add ACs here")
+	acsDescriptionInput.WithHeight(10)
+	acsDescriptionInput.CharLimit(math.MaxInt32)
+	acsDescriptionInput.ShowLineNumbers(true)
+
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().Key("acsLink").Placeholder("ACs Link"),
-			huh.NewText().Key("acsDescription").Placeholder("Add ACs here").WithHeight(10),
+			acsLinkInput,
+			acsDescriptionInput,
 		),
 	)
+
+	form.WithKeyMap(&huh.KeyMap{
+		Input: huh.InputKeyMap{
+			Next: key.NewBinding(
+				key.WithKeys("tab", "enter"),
+				key.WithHelp("enter / tab", "next"),
+			),
+		},
+		Text: huh.TextKeyMap{
+			Prev: key.NewBinding(
+				key.WithKeys("shift+tab"),
+				key.WithHelp("shift+tab", "back"),
+			),
+			Submit: key.NewBinding(
+				key.WithKeys("alt+enter", "ctrl+s"),
+				key.WithHelp("alt+enter / ctrl+s", "submit"),
+			),
+			NewLine: key.NewBinding(
+				key.WithKeys("enter", "ctrl+j"),
+				key.WithHelp("enter / ctrl+j", "new line"),
+			),
+			Editor: key.NewBinding(
+				key.WithKeys("ctrl+e"),
+				key.WithHelp("ctrl+e", "open editor"),
+			),
+		},
+		Quit: key.NewBinding(
+			key.WithKeys("ctrl+c", "esc"),
+			key.WithHelp("ctrl+c/esc", "Quit"),
+		),
+	})
 
 	err := form.Run()
 

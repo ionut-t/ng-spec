@@ -69,6 +69,7 @@ func parseAcs(acsText string) string {
 				result.WriteString(fmt.Sprintf("%sit('should %s', async () => {\n",
 					getIndentation(indentLevel),
 					lcFirst(title)))
+				result.WriteString(fmt.Sprintf("%sconst { view, httpTestingController, loader } = await mount();\n", getIndentation(indentLevel+1)))
 				result.WriteString(fmt.Sprintf("%s// TODO: Implement test\n", getIndentation(indentLevel+1)))
 				result.WriteString(fmt.Sprintf("%s});\n\n", getIndentation(indentLevel)))
 			}
@@ -78,6 +79,7 @@ func parseAcs(acsText string) string {
 			result.WriteString(fmt.Sprintf("%sit('should %s', async () => {\n",
 				getIndentation(indentLevel),
 				lcFirst(title)))
+			result.WriteString(fmt.Sprintf("%sconst { view, httpTestingController, loader } = await mount();\n", getIndentation(indentLevel+1)))
 			result.WriteString(fmt.Sprintf("%s// TODO: Implement test\n", getIndentation(indentLevel+1)))
 			result.WriteString(fmt.Sprintf("%s});\n\n", getIndentation(indentLevel)))
 		}
