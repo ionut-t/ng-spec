@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for git commands
         
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -30,17 +32,24 @@ jobs:
         run: |
           mkdir -p dist
           
+          # Get commit hash
+          COMMIT=$(git rev-parse --short HEAD)
+          # Get current date
+          BUILD_DATE=$(date -u +%d/%m/%Y)
+          # Define build flags
+          LDFLAGS="-X 'github.com/ionut-t/ng-spec/cmd.version=${{ env.VERSION }}' -X 'github.com/ionut-t/ng-spec/cmd.commit=$COMMIT' -X 'github.com/ionut-t/ng-spec/cmd.date=$BUILD_DATE'"
+          
           # Build for macOS (Apple Silicon)
-          GOOS=darwin GOARCH=arm64 go build -o dist/ng-spec-darwin-arm64
+          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/ng-spec-darwin-arm64
 
           # Build for macOS (Intel)
-          GOOS=darwin GOARCH=amd64 go build -o dist/ng-spec-darwin-amd64
+          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/ng-spec-darwin-amd64
                     
           # Build for Linux (64-bit)
-          GOOS=linux GOARCH=amd64 go build -o dist/ng-spec-linux-amd64
+          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/ng-spec-linux-amd64
           
           # Build for Windows (64-bit)
-          GOOS=windows GOARCH=amd64 go build -o dist/ng-spec-windows-amd64.exe
+          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/ng-spec-windows-amd64.exe
           
           # Make binaries executable
           chmod +x dist/*
